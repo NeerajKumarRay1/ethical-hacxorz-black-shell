@@ -44,6 +44,10 @@ serve(async (req) => {
 
     // Use Hugging Face DistillBERT for sentiment analysis
     const huggingFaceToken = Deno.env.get('HUGGING_FACE_ACCESS_TOKEN');
+    
+    console.log('Making request to Hugging Face API...');
+    console.log('Token available:', !!huggingFaceToken);
+    
     const response = await fetch(
       'https://api-inference.huggingface.co/models/distilbert/distilbert-base-uncased-finetuned-sst-2-english',
       {
@@ -53,10 +57,19 @@ serve(async (req) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          inputs: message
+          inputs: message,
+          options: {
+            wait_for_model: true
+          }
         }),
       }
     );
+    
+    console.log('Response status:', response.status);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log('Error response:', errorText);
+    }
 
     let aiResponse = "I'm an AI assistant focused on providing helpful and ethical responses. How can I assist you today?";
     let confidence = 75; // Default confidence for fallback response
