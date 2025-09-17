@@ -9,6 +9,8 @@ import { QuickActionChips } from './QuickActionChips';
 import { ChatHistory } from './ChatHistory';
 import { LoadingSpinner, MessageSkeleton } from './LoadingStates';
 import { ErrorBoundary } from './ErrorBoundary';
+import { MobileKeyboardAdapter, SwipeGestures, PullToRefresh } from './MobileOptimizations';
+import { FocusTrap, SkipLink, LiveRegion } from './AccessibilityEnhancements';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { usePagination } from '@/hooks/usePagination';
@@ -36,6 +38,7 @@ export const EthicalHacxorz: React.FC = () => {
   const [showHistory, setShowHistory] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(false);
+  const [announcement, setAnnouncement] = useState('');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -50,6 +53,27 @@ export const EthicalHacxorz: React.FC = () => {
     items: messages, 
     itemsPerPage: 50 
   });
+
+  const handleSwipeLeft = () => {
+    if (!showHistory) {
+      setShowHistory(true);
+      setAnnouncement('Chat history sidebar opened');
+    }
+  };
+
+  const handleSwipeRight = () => {
+    if (showHistory) {
+      setShowHistory(false);
+      setAnnouncement('Chat history sidebar closed');
+    }
+  };
+
+  const handleRefresh = async () => {
+    if (currentSessionId) {
+      await loadSessionMessages(currentSessionId);
+      setAnnouncement('Chat messages refreshed');
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
