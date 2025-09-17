@@ -42,22 +42,18 @@ serve(async (req) => {
       }
     }
 
-    // Use Hugging Face's free inference API
+    // Use Hugging Face DistillBERT for sentiment analysis
+    const huggingFaceToken = Deno.env.get('HUGGING_FACE_ACCESS_TOKEN');
     const response = await fetch(
-      'https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium',
+      'https://api-inference.huggingface.co/models/distilbert/distilbert-base-uncased-finetuned-sst-2-english',
       {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${huggingFaceToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          inputs: message,
-          parameters: {
-            max_length: 200,
-            temperature: 0.8,
-            do_sample: true,
-            pad_token_id: 50256
-          }
+          inputs: message
         }),
       }
     );
@@ -69,14 +65,26 @@ serve(async (req) => {
       const data = await response.json();
       console.log('Hugging Face response:', data);
       
-      if (data && data[0] && data[0].generated_text) {
-        // Extract only the new part of the response (DialoGPT includes the input)
-        const fullText = data[0].generated_text;
-        const newResponse = fullText.replace(message, '').trim();
-        if (newResponse && newResponse.length > 0) {
-          aiResponse = newResponse;
-          confidence = Math.floor(Math.random() * 30) + 60; // Random confidence between 60-90
+      if (data && Array.isArray(data) && data.length > 0) {
+        // DistillBERT returns sentiment classification results
+        const sentimentResult = data[0];
+        const sentiment = sentimentResult.label; // "POSITIVE" or "NEGATIVE"
+        const score = sentimentResult.score; // confidence score
+        
+        // Generate contextual response based on sentiment analysis
+        if (sentiment === 'POSITIVE') {
+          aiResponse = `I can sense the positive sentiment in your message! That's great to hear. Your message seems optimistic and upbeat. How can I help you further with this positive energy?`;
+        } else if (sentiment === 'NEGATIVE') {
+          aiResponse = `I notice your message has a negative sentiment. I'm here to help and support you. Would you like to talk more about what's concerning you or how I can assist?`;
+        } else {
+          aiResponse = `I've analyzed the sentiment of your message. Let me know how I can best assist you with your request.`;
         }
+        
+        // Use the model's confidence score
+        confidence = Math.round(score * 100);
+        
+        // Add sentiment details for transparency
+        aiResponse += `\n\n*Sentiment Analysis: ${sentiment.toLowerCase()} (${confidence}% confidence)*`;
       }
     } else {
       console.log('Hugging Face API error, using fallback response');
