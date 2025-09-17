@@ -54,7 +54,7 @@ serve(async (req) => {
       console.log('Message:', message);
       
       const response = await fetch(
-        'https://api-inference.huggingface.co/models/mrm8488/distilbert-base-multi-cased-finetuned-typo-detection',
+        'https://api-inference.huggingface.co/models/microsoft/DialoGPT-small',
         {
           method: 'POST',
           headers: {
@@ -62,9 +62,14 @@ serve(async (req) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            inputs: message,
+            inputs: {
+              past_user_inputs: [],
+              generated_responses: [],
+              text: message
+            },
             options: {
-              wait_for_model: true
+              wait_for_model: true,
+              use_cache: false
             }
           }),
         }
@@ -76,28 +81,19 @@ serve(async (req) => {
         const data = await response.json();
         console.log('Hugging Face response:', data);
         
-        if (data && Array.isArray(data) && data.length > 0) {
-          // Token classification model returns different format
+        if (data && data.generated_text) {
+          // DialoGPT model returns conversational response
           console.log('Raw model output:', JSON.stringify(data, null, 2));
           
-          // For token classification, we get an array of predictions for each token
-          // Let's analyze the predictions to determine text quality
-          const hasTypos = data.some(token => token.entity && token.entity.includes('TYPO'));
-          const avgConfidence = data.reduce((sum, token) => sum + (token.score || 0), 0) / data.length;
+          aiResponse = data.generated_text.trim();
+          confidence = 85; // High confidence for successful API call
           
-          // Create dynamic responses based on text analysis
-          const responses = hasTypos ? [
-            `I notice there might be some typos in "${message}". I'm here to help! What would you like assistance with?`,
-            `Thanks for your message about "${message}". I can help clarify or expand on this topic. What specifically interests you?`,
-            `I see you're asking about "${message}". Let me help you with that - what would you like to know?`
-          ] : [
-            `Great question about "${message}"! I'm here to provide helpful information. What aspect would you like to explore?`,
-            `Thanks for your clear message about "${message}". How can I best assist you with this topic?`,
-            `I understand you're interested in "${message}". What specific information or help do you need?`
-          ];
-          
-          aiResponse = responses[Math.floor(Math.random() * responses.length)];
-          confidence = Math.round(avgConfidence * 100);
+          console.log('Generated AI response:', aiResponse);
+          console.log('Confidence:', confidence);
+        } else if (data && Array.isArray(data) && data.length > 0 && data[0].generated_text) {
+          // Alternative format handling
+          aiResponse = data[0].generated_text.trim();
+          confidence = 85;
           
           console.log('Generated AI response:', aiResponse);
           console.log('Confidence:', confidence);
