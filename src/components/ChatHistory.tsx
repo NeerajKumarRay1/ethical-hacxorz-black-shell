@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { LoadingSpinner, HistorySkeleton } from './LoadingStates';
 import { MessageSquare, Clock, Trash2, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -25,7 +26,7 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
   onNewChat,
 }) => {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -38,6 +39,7 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
   const loadChatSessions = async () => {
     if (!user) return;
 
+    setIsLoading(true);
     try {
       // Get sessions with message counts
       const { data: sessions, error: sessionsError } = await supabase
@@ -72,7 +74,7 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -127,16 +129,8 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
     return title.length > maxLength ? title.substring(0, maxLength) + '...' : title;
   };
 
-  if (loading) {
-    return (
-      <div className="p-4 space-y-3">
-        {[...Array(3)].map((_, i) => (
-          <div key={i} className="animate-pulse">
-            <div className="h-12 bg-muted rounded-lg"></div>
-          </div>
-        ))}
-      </div>
-    );
+  if (isLoading) {
+    return <HistorySkeleton />;
   }
 
   return (

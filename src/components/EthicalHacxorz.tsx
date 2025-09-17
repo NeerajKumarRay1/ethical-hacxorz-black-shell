@@ -7,8 +7,11 @@ import { PrivacyModal } from './PrivacyModal';
 import { TypingIndicator } from './TypingIndicator';
 import { QuickActionChips } from './QuickActionChips';
 import { ChatHistory } from './ChatHistory';
+import { LoadingSpinner, MessageSkeleton } from './LoadingStates';
+import { ErrorBoundary } from './ErrorBoundary';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { usePagination } from '@/hooks/usePagination';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface Message {
@@ -31,10 +34,22 @@ export const EthicalHacxorz: React.FC = () => {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<{ display_name?: string } | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { user, signOut } = useAuth();
+  
+  // Use pagination for better performance with large message lists
+  const { 
+    currentItems: paginatedMessages, 
+    loadMoreItems, 
+    canLoadMore 
+  } = usePagination({ 
+    items: messages, 
+    itemsPerPage: 50 
+  });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
