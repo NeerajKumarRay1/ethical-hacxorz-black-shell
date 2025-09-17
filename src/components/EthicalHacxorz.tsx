@@ -7,6 +7,7 @@ import { PrivacyModal } from './PrivacyModal';
 import { TypingIndicator } from './TypingIndicator';
 import { QuickActionChips } from './QuickActionChips';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface Message {
   id: string;
@@ -25,6 +26,7 @@ export const EthicalHacxorz: React.FC = () => {
   const [showConfidence, setShowConfidence] = useState(true);
   const [showNudges, setShowNudges] = useState(true);
   const [currentNudge, setCurrentNudge] = useState<string | null>(null);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -36,6 +38,25 @@ export const EthicalHacxorz: React.FC = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Initialize session
+  useEffect(() => {
+    const initSession = async () => {
+      const { data, error } = await supabase
+        .from('chat_sessions')
+        .insert({
+          title: 'New Chat Session'
+        })
+        .select()
+        .single();
+
+      if (data && !error) {
+        setCurrentSessionId(data.id);
+      }
+    };
+
+    initSession();
+  }, []);
 
   // Show random nudges
   useEffect(() => {
@@ -75,37 +96,67 @@ export const EthicalHacxorz: React.FC = () => {
     setInputValue('');
     setIsTyping(true);
 
-    // Simulate AI response
-    setTimeout(() => {
-      const confidence = Math.random() * 100;
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: generateAIResponse(text),
-        sender: 'ai',
-        timestamp: new Date(),
-        confidence,
-      };
+    // Generate AI response
+    setTimeout(async () => {
+      try {
+        const aiResponse = await generateAIResponse(text);
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: aiResponse.text,
+          sender: 'ai',
+          timestamp: new Date(),
+          confidence: aiResponse.confidence,
+        };
 
-      setMessages(prev => [...prev, aiMessage]);
-      setIsTyping(false);
+        setMessages(prev => [...prev, aiMessage]);
 
-      // Show low confidence warning
-      if (confidence < 60) {
-        setCurrentNudge(`⚠️ AI confidence is ~${Math.round(confidence)}% on this answer. Use your judgement.`);
-        setTimeout(() => setCurrentNudge(null), 10000);
+        // Show low confidence warning
+        if (aiResponse.confidence < 60) {
+          setCurrentNudge(`⚠️ AI confidence is ~${Math.round(aiResponse.confidence)}% on this answer. Use your judgement.`);
+          setTimeout(() => setCurrentNudge(null), 10000);
+        }
+      } catch (error) {
+        console.error('Error getting AI response:', error);
+        const errorMessage: Message = {
+          id: (Date.now() + 2).toString(),
+          text: "I'm having trouble connecting right now. Please try again.",
+          sender: 'ai',
+          timestamp: new Date(),
+          confidence: 20
+        };
+        setMessages(prev => [...prev, errorMessage]);
+      } finally {
+        setIsTyping(false);
       }
-    }, 1500 + Math.random() * 1000);
+    }, 1000); // 1 second delay
   };
 
-  const generateAIResponse = (input: string): string => {
-    const responses = [
-      "I understand your query. Based on my analysis, here's what I can tell you...",
-      "That's an interesting question. Let me provide you with some insights...",
-      "I've processed your request. Here's my response with ethical considerations in mind...",
-      "Thank you for that question. I'll do my best to provide a helpful and responsible answer..."
-    ];
-    return responses[Math.floor(Math.random() * responses.length)] + " " + 
-           "Remember, I aim to be helpful while maintaining ethical standards and transparency about my limitations.";
+  const generateAIResponse = async (userMessage: string): Promise<{ text: string; confidence: number }> => {
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-chat', {
+        body: { 
+          message: userMessage,
+          sessionId: currentSessionId
+        }
+      });
+
+      if (error) {
+        console.error('Error calling AI function:', error);
+        throw error;
+      }
+
+      return {
+        text: data.response,
+        confidence: data.confidence
+      };
+    } catch (error) {
+      console.error('Error generating AI response:', error);
+      // Fallback response
+      return {
+        text: "I'm having trouble processing your request right now. Please try again in a moment.",
+        confidence: 30
+      };
+    }
   };
 
   const handleClearChat = () => {
