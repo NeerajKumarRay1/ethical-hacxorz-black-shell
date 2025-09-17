@@ -1,5 +1,8 @@
 import React from 'react';
 import { X, Shield, Eye, Bell } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface PrivacyModalProps {
   isOpen: boolean;
@@ -18,7 +21,68 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({
   showNudges,
   onToggleNudges,
 }) => {
+  const { user } = useAuth();
+  const { toast } = useToast();
+
   if (!isOpen) return null;
+
+  const handleToggleConfidence = async (newValue: boolean) => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from('user_preferences')
+        .upsert({
+          user_id: user.id,
+          show_confidence: newValue,
+          show_nudges: showNudges
+        });
+
+      if (error) throw error;
+
+      onToggleConfidence(newValue);
+      toast({
+        title: "Preferences updated",
+        description: `Confidence indicators ${newValue ? 'enabled' : 'disabled'}`,
+      });
+    } catch (error) {
+      console.error('Error updating preferences:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update preferences",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleToggleNudges = async (newValue: boolean) => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from('user_preferences')
+        .upsert({
+          user_id: user.id,
+          show_confidence: showConfidence,
+          show_nudges: newValue
+        });
+
+      if (error) throw error;
+
+      onToggleNudges(newValue);
+      toast({
+        title: "Preferences updated",
+        description: `Privacy nudges ${newValue ? 'enabled' : 'disabled'}`,
+      });
+    } catch (error) {
+      console.error('Error updating preferences:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update preferences",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -72,7 +136,7 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({
                   <input
                     type="checkbox"
                     checked={showConfidence}
-                    onChange={(e) => onToggleConfidence(e.target.checked)}
+                    onChange={(e) => handleToggleConfidence(e.target.checked)}
                     className="sr-only"
                   />
                   <div className={`
@@ -101,7 +165,7 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({
                   <input
                     type="checkbox"
                     checked={showNudges}
-                    onChange={(e) => onToggleNudges(e.target.checked)}
+                    onChange={(e) => handleToggleNudges(e.target.checked)}
                     className="sr-only"
                   />
                   <div className={`

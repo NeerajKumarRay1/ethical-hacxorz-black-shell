@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Settings, Info, Send, X, Trash2 } from 'lucide-react';
+import { Settings, Info, Send, X, Trash2, LogOut, User } from 'lucide-react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { NudgeBanner } from './NudgeBanner';
@@ -7,6 +7,7 @@ import { PrivacyModal } from './PrivacyModal';
 import { TypingIndicator } from './TypingIndicator';
 import { QuickActionChips } from './QuickActionChips';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface Message {
@@ -27,9 +28,11 @@ export const EthicalHacxorz: React.FC = () => {
   const [showNudges, setShowNudges] = useState(true);
   const [currentNudge, setCurrentNudge] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<{ display_name?: string } | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const { user, signOut } = useAuth();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -37,26 +40,57 @@ export const EthicalHacxorz: React.FC = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, isTyping]);
 
-  // Initialize session
+  // Initialize session and load user data
   useEffect(() => {
     const initSession = async () => {
-      const { data, error } = await supabase
-        .from('chat_sessions')
-        .insert({
-          title: 'New Chat Session'
-        })
-        .select()
-        .single();
+      if (!user) return;
 
-      if (data && !error) {
-        setCurrentSessionId(data.id);
+      try {
+        // Load user profile
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('display_name')
+          .eq('user_id', user.id)
+          .single();
+
+        if (profile) {
+          setUserProfile(profile);
+        }
+
+        // Load user preferences  
+        const { data: preferences } = await supabase
+          .from('user_preferences')
+          .select('show_confidence, show_nudges')
+          .eq('user_id', user.id)
+          .single();
+
+        if (preferences) {
+          setShowConfidence(preferences.show_confidence ?? true);
+          setShowNudges(preferences.show_nudges ?? true);
+        }
+
+        // Create or get current session
+        const { data: session, error } = await supabase
+          .from('chat_sessions')
+          .insert({
+            user_id: user.id,
+            title: 'New Chat Session'
+          })
+          .select()
+          .single();
+
+        if (session && !error) {
+          setCurrentSessionId(session.id);
+        }
+      } catch (error) {
+        console.error('Error initializing session:', error);
       }
     };
 
     initSession();
-  }, []);
+  }, [user]);
 
   // Show random nudges
   useEffect(() => {
@@ -168,6 +202,23 @@ export const EthicalHacxorz: React.FC = () => {
     });
   };
 
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      toast({
+        title: "Signed out",
+        description: "You've been signed out successfully.",
+      });
+    } catch (error) {
+      console.error('Error signing out:', error);
+      toast({
+        title: "Error",
+        description: "There was an error signing out.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleQuickAction = (action: string) => {
     switch (action) {
       case 'Check for fake news':
@@ -196,6 +247,12 @@ export const EthicalHacxorz: React.FC = () => {
         </div>
         
         <div className="flex items-center space-x-3">
+          {/* User Profile */}
+          <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+            <User className="w-4 h-4" />
+            <span>{userProfile?.display_name || user?.email?.split('@')[0] || 'User'}</span>
+          </div>
+          
           <button
             onClick={() => setShowPrivacyModal(true)}
             className="p-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors duration-150"
@@ -203,8 +260,11 @@ export const EthicalHacxorz: React.FC = () => {
             <Settings className="w-5 h-5" />
           </button>
           
-          <button className="p-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors duration-150">
-            <Info className="w-5 h-5" />
+          <button 
+            onClick={handleSignOut}
+            className="p-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors duration-150"
+          >
+            <LogOut className="w-5 h-5" />
           </button>
         </div>
       </header>
