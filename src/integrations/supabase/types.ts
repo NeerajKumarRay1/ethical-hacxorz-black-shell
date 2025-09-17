@@ -14,7 +14,92 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      chat_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          title: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          title?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          title?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      messages: {
+        Row: {
+          confidence: number | null
+          content: string
+          created_at: string
+          id: string
+          sender: string
+          session_id: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          content: string
+          created_at?: string
+          id?: string
+          sender: string
+          session_id?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          content?: string
+          created_at?: string
+          id?: string
+          sender?: string
+          session_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "chat_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_preferences: {
+        Row: {
+          created_at: string
+          id: string
+          show_confidence: boolean | null
+          show_nudges: boolean | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          show_confidence?: boolean | null
+          show_nudges?: boolean | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          show_confidence?: boolean | null
+          show_nudges?: boolean | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
