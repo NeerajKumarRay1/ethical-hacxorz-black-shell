@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Settings, Info, Send, X, Trash2, LogOut, User } from 'lucide-react';
+import { Settings, Info, Send, X, Trash2, LogOut, User, History, Menu } from 'lucide-react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { NudgeBanner } from './NudgeBanner';
 import { PrivacyModal } from './PrivacyModal';
 import { TypingIndicator } from './TypingIndicator';
 import { QuickActionChips } from './QuickActionChips';
+import { ChatHistory } from './ChatHistory';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -29,6 +30,7 @@ export const EthicalHacxorz: React.FC = () => {
   const [currentNudge, setCurrentNudge] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<{ display_name?: string } | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -71,19 +73,8 @@ export const EthicalHacxorz: React.FC = () => {
           setShowNudges(preferences.show_nudges ?? true);
         }
 
-        // Create or get current session
-        const { data: session, error } = await supabase
-          .from('chat_sessions')
-          .insert({
-            user_id: user.id,
-            title: 'New Chat Session'
-          })
-          .select()
-          .single();
-
-        if (session && !error) {
-          setCurrentSessionId(session.id);
-        }
+        // Create a new session for this visit
+        await createNewSession();
       } catch (error) {
         console.error('Error initializing session:', error);
       }
@@ -91,6 +82,87 @@ export const EthicalHacxorz: React.FC = () => {
 
     initSession();
   }, [user]);
+
+  const createNewSession = async () => {
+    if (!user) return;
+
+    try {
+      const { data: session, error } = await supabase
+        .from('chat_sessions')
+        .insert({
+          user_id: user.id,
+          title: 'New Chat Session'
+        })
+        .select()
+        .single();
+
+      if (session && !error) {
+        setCurrentSessionId(session.id);
+        setMessages([]); // Clear current messages
+      }
+    } catch (error) {
+      console.error('Error creating session:', error);
+    }
+  };
+
+  const loadSessionMessages = async (sessionId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      const loadedMessages: Message[] = data?.map(msg => ({
+        id: msg.id,
+        text: msg.content,
+        sender: msg.sender as 'user' | 'ai',
+        timestamp: new Date(msg.created_at),
+        confidence: msg.confidence || undefined
+      })) || [];
+
+      setMessages(loadedMessages);
+    } catch (error) {
+      console.error('Error loading messages:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load conversation history",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSessionSelect = async (sessionId: string) => {
+    setCurrentSessionId(sessionId);
+    await loadSessionMessages(sessionId);
+    setShowHistory(false);
+    
+    // Update session title if it's still the default
+    try {
+      const { data: session } = await supabase
+        .from('chat_sessions')
+        .select('title')
+        .eq('id', sessionId)
+        .single();
+
+      if (session?.title === 'New Chat Session' && messages.length > 0) {
+        const newTitle = messages[0]?.text.substring(0, 50) + (messages[0]?.text.length > 50 ? '...' : '');
+        await supabase
+          .from('chat_sessions')
+          .update({ title: newTitle })
+          .eq('id', sessionId);
+      }
+    } catch (error) {
+      console.error('Error updating session title:', error);
+    }
+  };
+
+  const handleNewChat = () => {
+    createNewSession();
+    setShowHistory(false);
+  };
 
   // Show random nudges
   useEffect(() => {
@@ -117,7 +189,7 @@ export const EthicalHacxorz: React.FC = () => {
   }, [showNudges]);
 
   const handleSendMessage = async (text: string) => {
-    if (!text.trim()) return;
+    if (!text.trim() || !currentSessionId) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -143,6 +215,18 @@ export const EthicalHacxorz: React.FC = () => {
         };
 
         setMessages(prev => [...prev, aiMessage]);
+
+        // Update session title if it's still default and this is the first message
+        if (messages.length === 0) {
+          const sessionTitle = text.length > 50 ? text.substring(0, 50) + '...' : text;
+          await supabase
+            .from('chat_sessions')
+            .update({ 
+              title: sessionTitle,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', currentSessionId);
+        }
 
         // Show low confidence warning
         if (aiResponse.confidence < 60) {
@@ -234,100 +318,126 @@ export const EthicalHacxorz: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background text-foreground">
-      {/* Header */}
-      <header className="flex items-center justify-between p-4 border-b border-border bg-background">
-        <div className="flex flex-col">
-          <h1 className="text-2xl font-bold tracking-wider uppercase">
-            ETHICAL HacXorZ
-          </h1>
-          <p className="text-sm text-muted-foreground font-medium">
-            Trustworthy AI, Your Control.
-          </p>
+    <div className="flex h-screen bg-background text-foreground">
+      {/* Chat History Sidebar */}
+      {showHistory && (
+        <div className="w-80 border-r border-border bg-card">
+          <ChatHistory
+            currentSessionId={currentSessionId}
+            onSessionSelect={handleSessionSelect}
+            onNewChat={handleNewChat}
+          />
         </div>
-        
-        <div className="flex items-center space-x-3">
-          {/* User Profile */}
-          <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-            <User className="w-4 h-4" />
-            <span>{userProfile?.display_name || user?.email?.split('@')[0] || 'User'}</span>
-          </div>
-          
-          <button
-            onClick={() => setShowPrivacyModal(true)}
-            className="p-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors duration-150"
-          >
-            <Settings className="w-5 h-5" />
-          </button>
-          
-          <button 
-            onClick={handleSignOut}
-            className="p-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors duration-150"
-          >
-            <LogOut className="w-5 h-5" />
-          </button>
-        </div>
-      </header>
+      )}
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.length === 0 && (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center space-y-4">
-                <div className="w-16 h-16 mx-auto bg-primary/20 rounded-full flex items-center justify-center">
-                  <div className="w-8 h-8 bg-primary rounded-full animate-pulse"></div>
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold mb-2">Welcome to ETHICAL HacXorZ</h3>
-                  <p className="text-muted-foreground max-w-md mx-auto">
-                    I'm here to help you with information and analysis while maintaining transparency about my confidence levels and limitations.
-                  </p>
+        {/* Header */}
+        <header className="flex items-center justify-between p-4 border-b border-border bg-background">
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className="p-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors duration-150"
+            >
+              {showHistory ? <X className="w-5 h-5" /> : <History className="w-5 h-5" />}
+            </button>
+            
+            <div className="flex flex-col">
+              <h1 className="text-2xl font-bold tracking-wider uppercase">
+                ETHICAL HacXorZ
+              </h1>
+              <p className="text-sm text-muted-foreground font-medium">
+                Trustworthy AI, Your Control.
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-3">
+            {/* User Profile */}
+            <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+              <User className="w-4 h-4" />
+              <span>{userProfile?.display_name || user?.email?.split('@')[0] || 'User'}</span>
+            </div>
+            
+            <button
+              onClick={() => setShowPrivacyModal(true)}
+              className="p-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors duration-150"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
+            
+            <button 
+              onClick={handleSignOut}
+              className="p-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors duration-150"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
+        </header>
+
+        {/* Main Chat Area */}
+        <div className="flex-1 flex flex-col">
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {messages.length === 0 && (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center space-y-4">
+                  <div className="w-16 h-16 mx-auto bg-primary/20 rounded-full flex items-center justify-center">
+                    <div className="w-8 h-8 bg-primary rounded-full animate-pulse"></div>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Welcome back!</h3>
+                    <p className="text-muted-foreground max-w-md mx-auto">
+                      {showHistory 
+                        ? "Select a conversation from the sidebar or start a new one." 
+                        : "I'm here to help you with information and analysis while maintaining transparency about my confidence levels and limitations."
+                      }
+                    </p>
+                  </div>
                 </div>
               </div>
+            )}
+            
+            {messages.map((message) => (
+              <ChatMessage
+                key={message.id}
+                message={message}
+                showConfidence={showConfidence}
+              />
+            ))}
+            
+            {isTyping && <TypingIndicator />}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Quick Actions */}
+          {messages.length > 0 && (
+            <div className="px-4">
+              <QuickActionChips onAction={handleQuickAction} />
             </div>
           )}
-          
-          {messages.map((message) => (
-            <ChatMessage
-              key={message.id}
-              message={message}
-              showConfidence={showConfidence}
+
+          {/* Chat Input */}
+          <div className="p-4">
+            <ChatInput
+              value={inputValue}
+              onChange={setInputValue}
+              onSend={handleSendMessage}
+              disabled={isTyping}
             />
-          ))}
-          
-          {isTyping && <TypingIndicator />}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Quick Actions */}
-        {messages.length > 0 && (
-          <div className="px-4">
-            <QuickActionChips onAction={handleQuickAction} />
-          </div>
-        )}
-
-        {/* Chat Input */}
-        <div className="p-4">
-          <ChatInput
-            value={inputValue}
-            onChange={setInputValue}
-            onSend={handleSendMessage}
-            disabled={isTyping}
-          />
-          
-          {/* Clear Chat Button */}
-          <div className="flex justify-between items-center mt-3">
-            <button
-              onClick={() => setShowClearModal(true)}
-              className="text-sm text-muted-foreground hover:text-primary transition-colors duration-150"
-            >
-              Clear Chat
-            </button>
-            <span className="text-xs text-muted-foreground">
-              Press Enter to send • Your data stays private
-            </span>
+            
+            {/* Clear Chat Button */}
+            <div className="flex justify-between items-center mt-3">
+              <button
+                onClick={() => setShowClearModal(true)}
+                className="text-sm text-muted-foreground hover:text-primary transition-colors duration-150"
+              >
+                Clear Chat
+              </button>
+              <span className="text-xs text-muted-foreground">
+                Press Enter to send • Your data stays private
+              </span>
+            </div>
           </div>
         </div>
       </div>
