@@ -54,7 +54,7 @@ serve(async (req) => {
       console.log('Message:', message);
       
       const response = await fetch(
-        'https://api-inference.huggingface.co/models/distilbert/distilbert-base-uncased-finetuned-sst-2-english',
+        'https://api-inference.huggingface.co/models/mrm8488/distilbert-base-multi-cased-finetuned-typo-detection',
         {
           method: 'POST',
           headers: {
@@ -77,30 +77,27 @@ serve(async (req) => {
         console.log('Hugging Face response:', data);
         
         if (data && Array.isArray(data) && data.length > 0) {
-          const sentimentResult = data[0];
-          const sentiment = sentimentResult.label;
-          const score = sentimentResult.score;
+          // Token classification model returns different format
+          console.log('Raw model output:', JSON.stringify(data, null, 2));
           
-          // Create dynamic responses based on the user's message and sentiment
-          const responses = {
-            'POSITIVE': [
-              `That's wonderful! I can sense the positive energy in your message about "${message}". How can I help you build on this positive momentum?`,
-              `Your message has such a positive tone! I'm glad to hear about "${message}". What would you like to explore further?`,
-              `I love the optimistic vibe of your message! Regarding "${message}", what specific aspect would you like to discuss?`
-            ],
-            'NEGATIVE': [
-              `I understand there might be some concerns in your message about "${message}". I'm here to help and support you through this.`,
-              `I can sense this topic might be challenging for you. Let's work together on "${message}" - what specific help do you need?`,
-              `Your message about "${message}" seems to carry some weight. I'm here to listen and assist you however I can.`
-            ]
-          };
+          // For token classification, we get an array of predictions for each token
+          // Let's analyze the predictions to determine text quality
+          const hasTypos = data.some(token => token.entity && token.entity.includes('TYPO'));
+          const avgConfidence = data.reduce((sum, token) => sum + (token.score || 0), 0) / data.length;
           
-          const responseArray = responses[sentiment] || [
-            `Thank you for sharing "${message}" with me. I'm here to help - what would you like to know or discuss?`
+          // Create dynamic responses based on text analysis
+          const responses = hasTypos ? [
+            `I notice there might be some typos in "${message}". I'm here to help! What would you like assistance with?`,
+            `Thanks for your message about "${message}". I can help clarify or expand on this topic. What specifically interests you?`,
+            `I see you're asking about "${message}". Let me help you with that - what would you like to know?`
+          ] : [
+            `Great question about "${message}"! I'm here to provide helpful information. What aspect would you like to explore?`,
+            `Thanks for your clear message about "${message}". How can I best assist you with this topic?`,
+            `I understand you're interested in "${message}". What specific information or help do you need?`
           ];
           
-          aiResponse = responseArray[Math.floor(Math.random() * responseArray.length)];
-          confidence = Math.round(score * 100);
+          aiResponse = responses[Math.floor(Math.random() * responses.length)];
+          confidence = Math.round(avgConfidence * 100);
           
           console.log('Generated AI response:', aiResponse);
           console.log('Confidence:', confidence);
