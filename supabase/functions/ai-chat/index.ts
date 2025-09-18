@@ -82,10 +82,50 @@ serve(async (req) => {
         console.log('Classification response:', classificationData);
         
         if (Array.isArray(classificationData) && classificationData.length > 0) {
-          const result = classificationData[0];
-          // Check for negative sentiment which might indicate suspicious content
-          isSuspicious = result.label === 'NEGATIVE' && result.score > 0.7;
-          classificationConfidence = result.score;
+          // Some HF models return nested arrays, so unwrap safely
+          const firstLevel = Array.isArray(classificationData[0]) ? classificationData[0] : classificationData;
+          
+          // Take top prediction (highest score)
+          const top = firstLevel.reduce((best, cur) =>
+            cur.score > best.score ? cur : best
+          );
+
+          isSuspicious = top.label === 'NEGATIVE' && top.score > 0.7;
+          classificationConfidence = top.score;
+        }
+      }
+
+      // Additional zero-shot classification for specific fake patterns
+      const zeroShotResponse = await fetch(
+        "https://api-inference.huggingface.co/models/facebook/bart-large-mnli",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${huggingFaceToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            inputs: message,
+            parameters: { candidate_labels: ["fake_scarcity", "hidden_fee", "safe"] }
+          }),
+        }
+      );
+
+      if (zeroShotResponse.ok) {
+        const zeroShotData = await zeroShotResponse.json();
+        console.log('Zero-shot classification response:', zeroShotData);
+        
+        // Check if fake_scarcity or hidden_fee have high scores
+        if (zeroShotData.labels && zeroShotData.scores) {
+          const fakeScarcityIndex = zeroShotData.labels.indexOf('fake_scarcity');
+          const hiddenFeeIndex = zeroShotData.labels.indexOf('hidden_fee');
+          
+          if (fakeScarcityIndex !== -1 && zeroShotData.scores[fakeScarcityIndex] > 0.6) {
+            isSuspicious = true;
+          }
+          if (hiddenFeeIndex !== -1 && zeroShotData.scores[hiddenFeeIndex] > 0.6) {
+            isSuspicious = true;
+          }
         }
       }
       
@@ -127,21 +167,6 @@ serve(async (req) => {
       
       console.log('Generated AI response:', aiResponse);
       console.log('Classification confidence:', confidence);
-      } else {
-        const errorText = await response.text();
-        console.log('API Error:', errorText);
-        
-        // Create a more dynamic fallback response
-        const fallbackResponses = [
-          `I see you mentioned "${message}". That's interesting! Can you tell me more about what you'd like to know or discuss?`,
-          `Regarding "${message}" - I'm here to help! What specific information or assistance are you looking for?`,
-          `Thanks for bringing up "${message}". I'd be happy to help you explore this topic further. What questions do you have?`,
-          `I notice you're asking about "${message}". While I process that, what particular aspect interests you most?`
-        ];
-        
-        aiResponse = fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
-        confidence = 65;
-      }
     } catch (error) {
       console.error('Error calling Hugging Face API:', error);
       
