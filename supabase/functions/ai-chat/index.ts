@@ -45,16 +45,17 @@ serve(async (req) => {
     let aiResponse = "I'm an AI assistant focused on providing helpful and ethical responses. How can I assist you today?";
     let confidence = 75;
 
-    // Try to get a real AI response from Hugging Face
+    // Try to classify the message for fake/misleading content
     try {
       const huggingFaceToken = Deno.env.get('HUGGING_FACE_ACCESS_TOKEN');
       
-      console.log('Making request to Hugging Face API...');
+      console.log('Making request to Hugging Face API for classification...');
       console.log('Token available:', !!huggingFaceToken);
       console.log('Message:', message);
       
-      const response = await fetch(
-        'https://api-inference.huggingface.co/models/microsoft/DialoGPT-small',
+      // First, classify the message for potential fake/misleading content
+      const classificationResponse = await fetch(
+        'https://api-inference.huggingface.co/models/distilbert-base-uncased-finetuned-sst-2-english',
         {
           method: 'POST',
           headers: {
@@ -62,11 +63,7 @@ serve(async (req) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            inputs: {
-              past_user_inputs: [],
-              generated_responses: [],
-              text: message
-            },
+            inputs: message,
             options: {
               wait_for_model: true,
               use_cache: false
@@ -75,29 +72,61 @@ serve(async (req) => {
         }
       );
       
-      console.log('Response status:', response.status);
+      console.log('Classification response status:', classificationResponse.status);
       
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Hugging Face response:', data);
+      let isSuspicious = false;
+      let classificationConfidence = 0.5;
+      
+      if (classificationResponse.ok) {
+        const classificationData = await classificationResponse.json();
+        console.log('Classification response:', classificationData);
         
-        if (data && data.generated_text) {
-          // DialoGPT model returns conversational response
-          console.log('Raw model output:', JSON.stringify(data, null, 2));
-          
-          aiResponse = data.generated_text.trim();
-          confidence = 85; // High confidence for successful API call
-          
-          console.log('Generated AI response:', aiResponse);
-          console.log('Confidence:', confidence);
-        } else if (data && Array.isArray(data) && data.length > 0 && data[0].generated_text) {
-          // Alternative format handling
-          aiResponse = data[0].generated_text.trim();
-          confidence = 85;
-          
-          console.log('Generated AI response:', aiResponse);
-          console.log('Confidence:', confidence);
+        if (Array.isArray(classificationData) && classificationData.length > 0) {
+          const result = classificationData[0];
+          // Check for negative sentiment which might indicate suspicious content
+          isSuspicious = result.label === 'NEGATIVE' && result.score > 0.7;
+          classificationConfidence = result.score;
         }
+      }
+      
+      // Check for suspicious patterns in the message
+      const suspiciousPatterns = [
+        /only \d+ left/i,
+        /hurry.*before.*gone/i,
+        /final price.*\+.*fee/i,
+        /free.*iphone/i,
+        /urgent.*act now/i,
+        /limited time.*offer/i,
+        /click here.*win/i,
+        /congratulations.*selected/i
+      ];
+      
+      const hasSuspiciousPattern = suspiciousPatterns.some(pattern => pattern.test(message));
+      
+      // Generate appropriate response based on classification
+      if (isSuspicious || hasSuspiciousPattern) {
+        const warningResponses = [
+          `I notice your message contains language that might be associated with misleading content. "${message}" - Please be cautious about urgent offers or hidden fees. Can I help you fact-check something?`,
+          `Your message "${message}" contains patterns often seen in deceptive content. I'd recommend verifying any offers or claims from multiple reliable sources. What specific information would you like me to help you research?`,
+          `The message "${message}" has characteristics that suggest it might be misleading. Always be skeptical of urgent offers or unexpected fees. How can I help you verify this information?`
+        ];
+        
+        aiResponse = warningResponses[Math.floor(Math.random() * warningResponses.length)];
+        confidence = Math.round(classificationConfidence * 100);
+      } else {
+        // Generate helpful response for normal content
+        const helpfulResponses = [
+          `Thanks for your message about "${message}". I'm here to provide factual information and help with any questions you might have. What would you like to know more about?`,
+          `I received your message: "${message}". I can help you research topics, verify information, or discuss various subjects. What can I assist you with today?`,
+          `Regarding "${message}" - I'm happy to help you explore this topic further with reliable information. What specific aspect interests you most?`
+        ];
+        
+        aiResponse = helpfulResponses[Math.floor(Math.random() * helpfulResponses.length)];
+        confidence = Math.round(classificationConfidence * 100);
+      }
+      
+      console.log('Generated AI response:', aiResponse);
+      console.log('Classification confidence:', confidence);
       } else {
         const errorText = await response.text();
         console.log('API Error:', errorText);
