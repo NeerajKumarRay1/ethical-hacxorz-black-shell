@@ -11,6 +11,7 @@ import { LoadingSpinner, MessageSkeleton } from './LoadingStates';
 import { ErrorBoundary } from './ErrorBoundary';
 import { MobileKeyboardAdapter, SwipeGestures, PullToRefresh } from './MobileOptimizations';
 import { FocusTrap, SkipLink, LiveRegion } from './AccessibilityEnhancements';
+import VapiWidget from './VapiWidget';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { usePagination } from '@/hooks/usePagination';
@@ -525,6 +526,11 @@ export const EthicalHacxorz: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Vapi Voice AI Widget */}
+      <div className="fixed bottom-6 right-6 z-40">
+        <VapiWidget />
+      </div>
     </div>
   );
 };
